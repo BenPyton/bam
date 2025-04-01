@@ -100,7 +100,7 @@ class BAM(commands.Cog):
 
     # Send a message in a channel and track this message for later deletion
     # returns True when the message has been sent, false otherwise
-    async def send_role_message(self, role_id:int, guild: discord.Guild, member: discord.Member, channel: discord.TextChannel, message: str, resend: bool = False, forceResendDelay: int = 60) -> bool:
+    async def send_role_message(self, role_id:int, guild: discord.Guild, member: discord.Member, channel: discord.TextChannel, message: str, resend: bool = False, forceResendDelay: int = 60, replyParent: discord.Message = None) -> bool:
         try:
             key = f"{guild.id}-{member.id}"
 
@@ -131,7 +131,10 @@ class BAM(commands.Cog):
                     # Delete previous message if resend is True
                     await self.delete_role_message(key)
 
-            msg = await channel.send(message.format(user_id=member.id))
+            if replyParent is None:
+                msg = await channel.send(message.format(user_id=member.id))
+            else:
+                msg = await replyParent.reply(message.format(user_id=member.id), mention_author=True)
             if self.msg_tracked.get(key) is None:
                 self.msg_tracked[key] = []
 
@@ -174,16 +177,7 @@ class BAM(commands.Cog):
 
         print(f"Member {after.name} ({after.id}) updated in {after.guild.name}. New roles: {new_roles}")
 
-        for role_to_detect in self.roles_detection:
-            if role_to_detect["id"] in new_roles:
-                print(f"Detected role {role_to_detect['id']} for {after.name} ({after.id}) in {after.guild.name}")
-                if not role_to_detect["enabled"]:
-                    continue
-                channel = self.bot.get_channel(role_to_detect["channel_notif"])
-                if not channel:
-                    print("❌ No channel to send the message.")
-                    continue
-                await self.send_role_message(role_to_detect["id"], after.guild, after, channel, role_to_detect["message"])
+        await self.send_message(after, after.guild)
 
     # Delete the tracked message when the member leaves the server
     @commands.Cog.listener()
@@ -191,6 +185,28 @@ class BAM(commands.Cog):
         print(f"Member {member.name} ({member.id}) removed from {member.guild.name} ({member.guild.id})")
         key = f"{member.guild.id}-{member.id}"
         await self.delete_role_message(key)
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot or not isinstance(message.author, discord.Member):
+            return
+        
+        await self.send_message(message.author, message.guild, replyParent=message)
+
+
+    # Send tracked role message
+    async def send_message(self, member: discord.Member, guild: discord.Guild, replyParent: discord.Message = None):
+        for role_to_detect in self.roles_detection:
+            if not role_to_detect["enabled"]:
+                continue
+            if role_to_detect["id"] in [role.id for role in member.roles]:
+                print(f"Detected role {role_to_detect['id']} for {member.name} ({member.id}) in {member.name}")
+                channel = self.bot.get_channel(role_to_detect["channel_notif"])
+                if not channel:
+                    print("❌ No channel to send the message.")
+                    continue
+                await self.send_role_message(role_to_detect["id"], guild, member, channel, role_to_detect["message"], replyParent=replyParent)
+
 
     # Delete all tracked messages
     @commands.command(aliases=["ctm"])
