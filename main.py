@@ -191,6 +191,14 @@ class BAM(commands.Cog):
         if message.author.bot or not isinstance(message.author, discord.Member):
             return
         
+        for role_to_detect in self.roles_detection:
+            if not role_to_detect["enabled"]:
+                continue
+            if role_to_detect["id"] in [role.id for role in message.author.roles]:
+                print(f"React to message with emoji {role_to_detect['emoji']}")
+                await message.add_reaction(role_to_detect["emoji"])
+                break
+
         await self.send_message(message.author, message.guild, replyParent=message)
 
 
@@ -279,11 +287,12 @@ class BAM(commands.Cog):
                 return
         # Add the new role to the list
         new_role = {
+            "enabled": True,
             "id": role_id,
             "channel_notif": channel_id,
-            "message": message,
-            "enabled": True,
-            "forceResendAfterMinutes": 60
+            "emoji": None,
+            "forceResendAfterMinutes": 60,
+            "message": message
         }
         self.roles_detection.append(new_role)
         await ctx.send(f":white_check_mark: Role {role_id} now configured.", delete_after=5)
@@ -337,6 +346,21 @@ class BAM(commands.Cog):
             if tracked_role["id"] == role_id:
                 tracked_role["message"] = message
                 await ctx.send(f":white_check_mark: Role {role_id} message successfully set.", delete_after=5)
+                return
+        await ctx.send(f":x: Role {role_id} not configured yet.", delete_after=5)
+
+    @commands.command()
+    async def setRoleEmoji(self, ctx, role: int | discord.Role, emoji: str = None):
+        await ctx.message.delete()
+        if isinstance(role, discord.Role):
+            role_id = role.id
+        else:
+            role_id = int(role)
+        print(f"Try to set emoji for role {role_id} to '{emoji}'")
+        for tracked_role in self.roles_detection:
+            if tracked_role["id"] == role_id:
+                tracked_role["emoji"] = emoji
+                await ctx.send(f":white_check_mark: Role {role_id} emoji successfully set.", delete_after=5)
                 return
         await ctx.send(f":x: Role {role_id} not configured yet.", delete_after=5)
 
