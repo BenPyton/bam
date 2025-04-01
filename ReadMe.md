@@ -4,6 +4,35 @@ Discord bot used to warn underage members to leave a discord server.
 
 Can also be used to message anyone with a specific role.
 
+## Installation
+
+Download or clone this repository into your bot project.
+
+You can for example have this folder structure:
+
+```
+bot root directory
+|- main.py
+|- ...
+|- plugins
+   |- bam <- This is the git repo download or clone
+      |- main.py
+```
+
+Then in your bot do the following:
+
+```py
+# Use it as an extension to load/unload at runtime
+# This will search for the main.py placed in ./plugins/bam directory
+await bot.load_extension("plugins.bam.main")
+await bot.reload_extension("plugins.bam.main")
+await bot.unload_extension("plugins.bam.main")
+
+# You can also use it as a Cog but this won't allow hot-reload
+await bot.add_cog(BAM(bot))
+await bot.remove_cog("BAM")
+```
+
 ## Commands
 
 command | description
