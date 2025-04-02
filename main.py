@@ -200,7 +200,10 @@ class BAM(commands.Cog):
                 continue
             if role_to_detect["id"] in [role.id for role in message.author.roles]:
                 log.info(f"React to message with emoji {emoji}")
-                await message.add_reaction(emoji)
+                try:
+                    await message.add_reaction(emoji)
+                except Exception as e:
+                    log.error(f"Failed to add rection to message {message.id}")
                 break
 
         await self.send_message(message.author, message.guild, replyParent=message)
@@ -219,14 +222,14 @@ class BAM(commands.Cog):
                     continue
                 await self.send_role_message(role_to_detect["id"], guild, member, channel, role_to_detect["message"], replyParent=replyParent)
 
-
     # Delete all tracked messages
     @commands.command(aliases=["ctm"])
     @predicate.admin_only()
     async def clearTrackedMessages(self, ctx):
         await ctx.message.delete()
 
-        log.info(f"Cleaning up {len(self.msg_tracked)} tracked messages...")
+        count: int = len(self.msg_tracked)
+        log.info(f"Cleaning up {count} tracked messages...")
 
         for key, msgData in self.msg_tracked.items():
             log.info(f"Trying to delete message {key}")
@@ -240,7 +243,7 @@ class BAM(commands.Cog):
 
         self.msg_tracked.clear()
         log.info("Cleanup complete.")
-
+        await log.success(ctx, f"{count} tracked message sucessfully cleared.")
 
     @commands.command()
     @predicate.admin_only()
@@ -299,7 +302,7 @@ class BAM(commands.Cog):
             "id": role_id,
             "channel_notif": channel_id,
             "emoji": None,
-            "forceResendAfterMinutes": 60,
+            "cooldown": 60,
             "message": message
         }
         self.roles_detection.append(new_role)
