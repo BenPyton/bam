@@ -161,7 +161,7 @@ class BAM(commands.Cog):
     @commands.command()
     async def bam(self, ctx):
         await ctx.message.delete()
-        await ctx.send("BAM!", delete_after=5)
+        await ctx.send("BAM!", delete_after=10)
 
     # Just log for now when a member joins the server
     @commands.Cog.listener()
