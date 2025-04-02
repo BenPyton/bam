@@ -1,17 +1,18 @@
 # Bot Anti-Mineur (BAM)
 
-Discord bot used to warn underage members to leave a discord server.
+Discord bot extension used to warn underage members to leave a discord server.
 
 Can also be used to message anyone with a specific role.
 
 ## Installation
 
-Download or clone this repository into your bot project.
+### Installing in a Dismob
 
-You can for example have this folder structure:
+Download (or add it as a git submodule) this repository into your Dismob project.  
+You must place it in `./plugins/bam/` in order to be able to use `load bam` command of Dismob.
 
 ```
-bot root directory
+Dismob root directory
 |- main.py
 |- ...
 |- plugins
@@ -19,7 +20,17 @@ bot root directory
       |- main.py
 ```
 
-Then in your bot do the following:
+### Installing in another bot
+
+> [!WARNING]
+> This extension is meant to be used within a [Dismob](https://github.com/BenPyton/Dismob) bot!  
+> Some imports comes from there (e.g. `log`, `predicates` and `filehelper`)  
+> If you want to use it outside of a Dismob, you'll have to grab those required files from the Dismob repo.
+
+Place it in a subfolder of your project.  
+For the example below, I'll use the same folder structure as for Dismob (so I place it in `./plugins/bam/` subfolder)
+
+Then you can either load it as an extension (allowing hot-reload), or mount the cog on your bot (no hot-reload):
 
 ```py
 # Use it as an extension to load/unload at runtime
