@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import datetime
 import time
@@ -23,9 +23,10 @@ class BAM(commands.Cog):
         log.info("BAM Cog initialize...")
         self.bot: commands.Bot = bot
         self.msg_tracked: dict[str, any] = {}
-        #self.periodic_scan = None
         self.config = filehelper.openConfig('bam')
         self.roles_detection: list = self.config.get("roles") or list()
+        self.periodic_scan_enabled = self.config.get("periodic_scan_enabled") or False
+        self.periodic_scan.change_interval(minutes=self.config.get("periodic_scan_interval") or 60)
         self.tracked_msg_save_file = "tracked_messages.bam.json"
         try:
             self.tracked_msg_save_file = self.config["save_path"]["tracked_messages"]
@@ -42,18 +43,37 @@ class BAM(commands.Cog):
         filehelper.saveJson("save", self.tracked_msg_save_file, self.msg_tracked)
         log.info(f"Tracked messages saved to {self.tracked_msg_save_file}: {self.msg_tracked}")
 
+    @tasks.loop(seconds=10)
+    async def periodic_scan(self):
+        try:
+            log.info("Executing periodic scan...")
+            await self.fetch_roles()
+        except Exception as e:
+            log.error(f"Failed to execute periodic scan: {e}")
+
+    def start_periodic_scan(self):
+        if self.periodic_scan_enabled:
+            log.info("Starting perdiodic scan...")
+            self.periodic_scan.start()
+
+    def stop_periodic_scan(self):
+        if self.periodic_scan.is_running():
+            log.info("Cancelling perdiodic scan...")
+            self.periodic_scan.cancel()
+
     # Cog startup
     async def cog_load(self):
-        log.info(f"BAM module startup!")
+        log.info("BAM module startup!")
         self.load_tracked_messages()
-        await self.fetch_roles()
+        self.start_periodic_scan()
     
     # Cog cleanup
     async def cog_unload(self):
-        log.info(f"BAM module cleanup!")
+        log.info("BAM module cleanup!")
+        self.stop_periodic_scan()
         self.save_tracked_messages()
         self.config["roles"] = self.roles_detection
-        filehelper.saveConfig(module = "bam", data = self.config)
+        filehelper.saveConfig(module="bam", data=self.config)
 
     # Try to retrieve a message from a channel
     async def get_message(self, channel_id: int, message_id: int) -> typing.Optional[discord.Message]:
@@ -208,7 +228,6 @@ class BAM(commands.Cog):
 
         await self.send_message(message.author, message.guild, replyParent=message)
 
-
     # Send tracked role message
     async def send_message(self, member: discord.Member, guild: discord.Guild, replyParent: discord.Message = None):
         for role_to_detect in self.roles_detection:
@@ -225,7 +244,7 @@ class BAM(commands.Cog):
     # Delete all tracked messages
     @commands.command(aliases=["ctm"])
     @predicate.admin_only()
-    async def clearTrackedMessages(self, ctx):
+    async def clearTrackedMessages(self, ctx: commands.Context):
         await ctx.message.delete()
 
         count: int = len(self.msg_tracked)
@@ -247,7 +266,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def listRoles(self, ctx):
+    async def listRoles(self, ctx: commands.Context):
         await ctx.message.delete()
         log.info("Displaying tracked roles.")
 
@@ -260,7 +279,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def enableRole(self, ctx, role: int | discord.Role, value: bool = True):
+    async def enableRole(self, ctx: commands.Context, role: int | discord.Role, value: bool = True):
         await ctx.message.delete()
 
         if isinstance(role, discord.Role):
@@ -278,7 +297,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def trackRole(self, ctx, role: int | discord.Role, channel: int | discord.TextChannel, message: str):
+    async def trackRole(self, ctx: commands.Context, role: int | discord.Role, channel: int | discord.TextChannel, message: str):
         await ctx.message.delete()
 
         if isinstance(role, discord.Role):
@@ -310,7 +329,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def untrackRole(self, ctx, role: int | discord.Role):
+    async def untrackRole(self, ctx: commands.Context, role: int | discord.Role):
         await ctx.message.delete()
 
         if isinstance(role, discord.Role):
@@ -328,13 +347,13 @@ class BAM(commands.Cog):
 
     @commands.command(aliases=["scan"])
     @predicate.admin_only()
-    async def scanRoles(self, ctx):
+    async def scanRoles(self: commands.Context, ctx):
         await ctx.message.delete()
         await self.fetch_roles(ctx.guild)
         
     @commands.command()
     @predicate.admin_only()
-    async def setRoleCooldown(self, ctx, role: int | discord.Role, cooldown: int):
+    async def setRoleCooldown(self, ctx: commands.Context, role: int | discord.Role, cooldown: int):
         await ctx.message.delete()
         if isinstance(role, discord.Role):
             role_id = role.id
@@ -350,7 +369,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def setRoleMessage(self, ctx, role: int | discord.Role, message: str):
+    async def setRoleMessage(self, ctx: commands.Context, role: int | discord.Role, message: str):
         await ctx.message.delete()
         if isinstance(role, discord.Role):
             role_id = role.id
@@ -366,7 +385,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def setRoleEmoji(self, ctx, role: int | discord.Role, emoji: str = None):
+    async def setRoleEmoji(self, ctx: commands.Context, role: int | discord.Role, emoji: str = None):
         await ctx.message.delete()
         if isinstance(role, discord.Role):
             role_id = role.id
@@ -382,7 +401,29 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def showRoleConfig(self, ctx, role: int | discord.Role):
+    async def setScanInterval(self, ctx: commands.Context, interval: int):
+        await ctx.message.delete()
+        log.info(f"Set scan interval to '{interval}'")
+        self.periodic_scan_interval = interval
+        self.config["periodic_scan_interval"] = interval
+        await log.success(ctx, f"Periodic scan interval successfully set to {interval}.")
+
+    @commands.command()
+    @predicate.admin_only()
+    async def enableScan(self, ctx: commands.Context, enable: bool):
+        await ctx.message.delete()
+        log.info(f"{'En' if enable else 'Dis'}abling periodic scan...")
+        self.periodic_scan_enabled = enable
+        self.config["periodic_scan_enabled"] = enable
+        if enable:
+            self.start_periodic_scan()
+        else:
+            self.stop_periodic_scan()
+        await log.success(ctx, f"Periodic scan successfully {'en' if enable else 'dis'}abled.")
+
+    @commands.command()
+    @predicate.admin_only()
+    async def showRoleConfig(self, ctx: commands.Context, role: int | discord.Role):
         await ctx.message.delete()
         if isinstance(role, discord.Role):
             role_id = role.id
@@ -401,7 +442,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def roleInfo(self, ctx, role: int | discord.Role):
+    async def roleInfo(self, ctx: commands.Context, role: int | discord.Role):
         await ctx.message.delete()
         if isinstance(role, discord.Role):
             role_inst = role
@@ -427,7 +468,7 @@ class BAM(commands.Cog):
 
     @commands.command(aliases=["stm"])
     @predicate.admin_only()
-    async def showTrackedMessages(self, ctx):
+    async def showTrackedMessages(self, ctx: commands.Context):
         await ctx.message.delete()
         log.info("Displaying tracked messages.")
         msg_list = "Tracked messages:\n"
@@ -447,7 +488,7 @@ class BAM(commands.Cog):
 
     @commands.command()
     @predicate.admin_only()
-    async def flush(self, ctx):
+    async def flush(self, ctx: commands.Context):
         await ctx.message.delete()
         log.info("Flush.")
         try:
