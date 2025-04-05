@@ -94,30 +94,6 @@ class BAM(commands.Cog):
             log.error(f"Failed to get message: {e}")
 
         return message
-    
-    # Attempt to send a message to all members with a specific role
-    async def fetch_roles(self, guildCtx: discord.Guild = None):
-        for guild in self.bot.guilds:
-            if (guildCtx is not None and guild != guildCtx):
-                continue
-            
-            log.info(f"Connected to {guild.name} ({guild.id}) ({guild.member_count} members)")
-            for role_to_detect in self.roles_detection:
-                if not role_to_detect["enabled"]:
-                    continue
-
-                role: discord.Role = guild.get_role(role_to_detect["id"])
-                if role is None:
-                    continue
-
-                log.info(f'- Members with the role {role.name} ({len(role.members)}):')
-                
-                channel = self.bot.get_channel(role_to_detect["channel_notif"])
-                for member in role.members:
-                    log.info(f"  - {member.name} ({member.id})")
-                    sent = await self.send_role_message(role.id, guild, member, channel, role_to_detect["message"], forceResendDelay = role_to_detect.get("cooldown") or 60)
-                    if sent:
-                        await asyncio.sleep(1)
 
     # Send a message in a channel and track this message for later deletion
     # returns True when the message has been sent, false otherwise
@@ -345,12 +321,6 @@ class BAM(commands.Cog):
                 return
         await log.failure(ctx, f"Role {role_id} not configured yet.")
 
-    @commands.command(aliases=["scan"])
-    @predicate.admin_only()
-    async def scanRoles(self: commands.Context, ctx):
-        await ctx.message.delete()
-        await self.fetch_roles(ctx.guild)
-        
     @commands.command()
     @predicate.admin_only()
     async def setRoleCooldown(self, ctx: commands.Context, role: int | discord.Role, cooldown: int):
@@ -398,28 +368,6 @@ class BAM(commands.Cog):
                 await log.success(ctx, f"Role {role_id} emoji successfully set.")
                 return
         await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def setScanInterval(self, ctx: commands.Context, interval: int):
-        await ctx.message.delete()
-        log.info(f"Set scan interval to '{interval}'")
-        self.periodic_scan_interval = interval
-        self.config["periodic_scan_interval"] = interval
-        await log.success(ctx, f"Periodic scan interval successfully set to {interval}.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def enableScan(self, ctx: commands.Context, enable: bool):
-        await ctx.message.delete()
-        log.info(f"{'En' if enable else 'Dis'}abling periodic scan...")
-        self.periodic_scan_enabled = enable
-        self.config["periodic_scan_enabled"] = enable
-        if enable:
-            self.start_periodic_scan()
-        else:
-            self.stop_periodic_scan()
-        await log.success(ctx, f"Periodic scan successfully {'en' if enable else 'dis'}abled.")
 
     @commands.command()
     @predicate.admin_only()
@@ -498,3 +446,86 @@ class BAM(commands.Cog):
         except Exception as e:
             log.failure(ctx, f"Failed to flush: {e}")
         await log.success(ctx, "Flushed.")
+    
+    ####                             ####
+    #       Periodic Scan Commands      #
+    ####                             ####
+        
+    # Attempt to send a message to all members with a specific role
+    async def fetch_roles(self, guildCtx: discord.Guild = None):
+        for guild in self.bot.guilds:
+            if (guildCtx is not None and guild != guildCtx):
+                continue
+            
+            log.info(f"Connected to {guild.name} ({guild.id}) ({guild.member_count} members)")
+            for role_to_detect in self.roles_detection:
+                if not role_to_detect["enabled"]:
+                    continue
+
+                role: discord.Role = guild.get_role(role_to_detect["id"])
+                if role is None:
+                    continue
+
+                log.info(f'- Members with the role {role.name} ({len(role.members)}):')
+                
+                channel = self.bot.get_channel(role_to_detect["channel_notif"])
+                for member in role.members:
+                    log.info(f"  - {member.name} ({member.id})")
+                    sent = await self.send_role_message(role.id, guild, member, channel, role_to_detect["message"], forceResendDelay = role_to_detect.get("cooldown") or 60)
+                    if sent:
+                        await asyncio.sleep(1)
+
+    async def enable_scan(self, ctx: commands.Context | discord.Interaction, enable: bool):
+        log.info(f"{'En' if enable else 'Dis'}abling periodic scan...")
+        try:
+            self.periodic_scan_enabled = enable
+            self.config["periodic_scan_enabled"] = enable
+            if enable:
+                self.start_periodic_scan()
+            else:
+                self.stop_periodic_scan()
+            await log.success(ctx, f"Periodic scan successfully {'en' if enable else 'dis'}abled.")
+        except Exception as e:
+            await log.failure(ctx, f"Error when changing scan enable state: {e}")
+
+    @commands.command()
+    @predicate.admin_only()
+    async def scan(self, ctx: commands.Context, command: str = None, *args: str):
+        log.info(f"Nb args {len(args)} | args: {args}")
+        await ctx.message.delete()
+
+        if command is None:
+            log.info(f"Scan current guild roles")
+            await self.fetch_roles(ctx.guild)
+
+        elif command.lower() == "all":
+            log.info(f"Scan all roles")
+            await self.fetch_roles()
+
+        elif command.lower() == "enable":
+            if len(args) > 0:
+                log.warning(f"args `{args[0]}` converted into bool: {args[0] == True}")
+                await self.enable_scan(ctx, args[0] == True)
+            else: # Assume we want to `enable on` if no argument passed
+                await self.enable_scan(ctx, True)
+
+        elif command.lower() == "disable": # Shortcut for `enable off`
+                await self.enable_scan(ctx, False)
+
+        elif command.lower() == "interval":
+            if len(args) > 0:
+                try:
+                    new_interval: int = int(args[0])
+                    log.info(f"Set scan interval to '{new_interval}'")
+                    self.periodic_scan.change_interval(minutes=new_interval)
+                    self.config["periodic_scan_interval"] = new_interval
+                    await log.success(ctx, f"Periodic scan interval successfully set to {new_interval}.")
+                except Exception as e:
+                    await log.failure(ctx, f"Error when trying to change scan interval: {e}")
+            else:
+                log.info(f"Display current scan interval")
+                await log.client(ctx, f"Current scan interval is set to {int(self.periodic_scan.minutes)}")
+        
+        else:
+            await log.client(ctx, f"Unkown command {command}.\nAvailable commands:\n- `enable [on/off]`\n- `disable` (equivalent to `enable off`)\n- `interval [<value>]`\n- `all`\n- no command (scan current server)", delete_after=20)
+
