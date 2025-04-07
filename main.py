@@ -257,21 +257,6 @@ class BAM(commands.Cog):
                 print(f"An error occurred while fetching the channel: {e}")
         return channel
 
-    async def get_channel(self, role_id: int) -> typing.Optional[discord.Role]:
-        # Try to get the channel from the cache
-        role_id = self.bot.get_role(role_id)
-        if channel is None:
-            try:
-                # Fetch the channel from the API if not in cache
-                channel = await self.bot.fetch_channel(channel_id)
-            except discord.NotFound:
-                print(f"Channel with ID {channel_id} not found.")
-            except discord.Forbidden:
-                print(f"Bot does not have permission to access channel with ID {channel_id}.")
-            except Exception as e:
-                print(f"An error occurred while fetching the channel: {e}")
-        return channel
-
     async def get_role(self, ctx: commands.Context, role_id: int) -> typing.Optional[discord.Role]:
         # Search through all guilds the bot is in
         for guild in self.bot.guilds:
