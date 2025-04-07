@@ -50,15 +50,16 @@ await bot.remove_cog("BAM")
 
 command | description
 --- | ---
-`bam` | `BAM!`
-`listRoles` | List all tracked roles
-`enableRole <id\|@role> [on\|off]` | Enable or disable the messages for a role.
-`trackRole <role id\|@> <msg channel id\|@> <message>` | Add a new role configuration
-`untrackRole <role id\|@>` | Remove a role configuration
-`setRoleCooldown <role id\|@> <value>` | Set the minimum amount of time in minutes before triggering a new message for the same member
-`setRoleMessage <role id\|@> <msg>` | Change the message sent for a tracked role
-`showRoleConfig <role id\|@>` | Display the configuration for a tracked role
-`roleInfo <role id\|@>` | Display information for a specific role
+`role` | List all configured roles.
+`role <@role>` | Display information about the role and configuration details if any.
+`role <@role> enable [on\|off]` | Enable or disable the role configuration. Default to `on` if no argument passed.
+`role <@role> disable` | Shortcut for `role <@role> enable off`.
+`role <@role> track [key=val]...` | Create a configuration for the role. Takes optional arguments as the form `key=value` to set directly the data. (see the role commands below to know what arguments can be passed this way)
+`role <@role> untrack` | Delete the configuration for the specified role.
+`role <@role> channel [<#channel>]` | Set the role's configuration channel to send message. Display the currently set channel if no argument passed.
+`role <@role> emoji [<value>]` | Set the role's configuration emoji for message reactions. Display the currently set emoji if no argument passed.
+`role <@role> message [<value>]` | Set the role's configuration message to send. Display the currently set message if no argument passed.
+`role <@role> cooldown [<value>]` | Set the role's configuration cooldown (in minute) before resending a message to the same user. Display the currently set cooldown if no argument passed.
 
 ### Periodic Scan Commands
 
@@ -85,7 +86,8 @@ This part is to help you understand the command syntax I used in the above table
 
 Text placed inside `<>` is an argument to be replaced by the appropriate values.  
 Text placed inside `[]` is optional and may not be provided.  
-The `|` is used to mark alternative values
+The `|` is used to mark alternative values.  
+The `...` means that last may be repeated any times.
 
 ## Limitations
 
