@@ -360,14 +360,14 @@ class BAM(commands.Cog):
                 return
             
             if args is None: # Display current notif channel if no argument provided
-                channel: discord.TextChannel = await self.get_channel(role_config["channel_notif"])
+                channel: discord.TextChannel = await self.get_channel(role_config['channel_notif'])
                 await log.client(ctx, f"Notification channel for `{role.name}` ({role.id}) is set to `{channel.name}` ({channel.id})")
             else:
                 try:
                     log.info(f"Try to set channel's role `{role.name}` ({role.id}) to {args}.")
                     converter = commands.TextChannelConverter()
                     channel = await converter.convert(ctx, args)
-                    role_config["channel_notif"] = channel.id
+                    role_config['channel_notif'] = channel.id
                     await log.success(ctx, f"Notification channel for `{role.name}` ({role.id}) successfully set to: `{channel}`")
                 except Exception as e:
                     await log.failure(ctx, f"Failed to retrieve channel: {e}")
@@ -379,11 +379,11 @@ class BAM(commands.Cog):
                 return
             
             if args is None: # Display current notif channel if no argument provided
-                await log.client(ctx, f"Emoji for `{role.name}` ({role.id}) is set to {role_config["emoji"]}")
+                await log.client(ctx, f"Emoji for `{role.name}` ({role.id}) is set to {role_config['emoji']}")
             else:
                 log.info(f"Try to set emoji's role `{role.name}` ({role.id}) to {args}.")
-                role_config["emoji"] = args
-                await log.success(ctx, f"Emoji for `{role.name}` ({role.id}) successfully set to: `{role_config["emoji"]}`")
+                role_config['emoji'] = args
+                await log.success(ctx, f"Emoji for `{role.name}` ({role.id}) successfully set to: `{role_config['emoji']}`")
 
         elif command.lower() == "message": # Change or display the message
             role_config = self.get_role_config(role)
@@ -392,11 +392,11 @@ class BAM(commands.Cog):
                 return
             
             if args is None: # Display current notif channel if no argument provided
-                await log.client(ctx, f"Message for `{role.name}` ({role.id}) is set to {role_config["message"]}")
+                await log.client(ctx, f"Message for `{role.name}` ({role.id}) is set to {role_config['message']}")
             else:
                 log.info(f"Try to set message's role `{role.name}` ({role.id}) to {args}.")
-                role_config["message"] = args
-                await log.success(ctx, f"Message for `{role.name}` ({role.id}) successfully set to: `{role_config["message"]}`")
+                role_config['message'] = args
+                await log.success(ctx, f"Message for `{role.name}` ({role.id}) successfully set to: `{role_config['message']}`")
         
         elif command.lower() == "cooldown": # Change or display the cooldown
             role_config = self.get_role_config(role)
@@ -405,13 +405,13 @@ class BAM(commands.Cog):
                 return
             
             if args is None: # Display current notif channel if no argument provided
-                await log.client(ctx, f"Cooldown for `{role.name}` ({role.id}) is set to {role_config["cooldown"]}")
+                await log.client(ctx, f"Cooldown for `{role.name}` ({role.id}) is set to {role_config['cooldown']}")
             else:
                 try:
                     log.info(f"Try to set cooldown's role `{role.name}` ({role.id}) to {args}.")
                     value: int = int(args)
-                    role_config["cooldown"] = value
-                    await log.success(ctx, f"Cooldown for `{role.name}` ({role.id}) successfully set to: `{role_config["cooldown"]}`")
+                    role_config['cooldown'] = value
+                    await log.success(ctx, f"Cooldown for `{role.name}` ({role.id}) successfully set to: `{role_config['cooldown']}`")
                 except Exception as e:
                     await log.failure(ctx, f"Failed to set cooldown for `{role.name}` ({role.id}): `{e}`")
 
