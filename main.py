@@ -9,6 +9,7 @@ import os
 import log
 import filehelper
 import predicate
+import kwargparse
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(BAM(bot))
@@ -153,12 +154,6 @@ class BAM(commands.Cog):
             except Exception as e:
                 log.error(f"Failed to delete message: {e}")
 
-    # Test command to see if the BAM module is working
-    @commands.command()
-    async def bam(self, ctx):
-        await ctx.message.delete()
-        await ctx.send("BAM!", delete_after=10)
-
     # Just log for now when a member joins the server
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -217,236 +212,227 @@ class BAM(commands.Cog):
                     continue
                 await self.send_role_message(role_to_detect["id"], guild, member, channel, role_to_detect["message"], replyParent=replyParent)
 
-    # Delete all tracked messages
-    @commands.command(aliases=["ctm"])
-    @predicate.admin_only()
-    async def clearTrackedMessages(self, ctx: commands.Context):
-        await ctx.message.delete()
+    ####                                  ####
+    #       Role Configuration Commands      #
+    ####                                  ####
 
-        count: int = len(self.msg_tracked)
-        log.info(f"Cleaning up {count} tracked messages...")
+    def get_role_config(self, role: discord.Role):
+        for role_config in self.roles_detection:
+            if role_config["id"] == role.id:
+                return role_config
+        return None
 
-        for key, msgData in self.msg_tracked.items():
-            log.info(f"Trying to delete message {key}")
-            for msgDatum in msgData:
-                msg = await self.get_message(msgDatum['channel'], msgDatum['id'])
-                if msg is not None:
-                    try:
-                        await msg.delete()
-                    except Exception as e:
-                        log.error(f"Error deleting message {key}: {e}")
+    def get_role_info(self, role: discord.Role) -> str:
+        role_config = self.get_role_config(role)
+        # Write basic role info
+        role_info: str = f"**Role {role.name}**\n\
+**ID**: {role.id}\n\
+**Creation**: {role.created_at.strftime('%a, %d %b %Y %I:%M %p')}\n\
+**Position**: {role.position}\n\
+**Mentionable**: {role.mentionable}\n\
+**Tracked**: {role_config is not None}\n"
 
-        self.msg_tracked.clear()
-        log.info("Cleanup complete.")
-        await log.success(ctx, f"{count} tracked message sucessfully cleared.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def listRoles(self, ctx: commands.Context):
-        await ctx.message.delete()
-        log.info("Displaying tracked roles.")
-
-        role_list = "Tracked roles:\n"
-        for role in self.roles_detection:
-            role_list += f"- Role {role['id']} in channel {role['channel_notif']} (enabled: {role['enabled']})\n"
+        # Appends track info if possible
+        if role_config is not None:
+            role_info += f"**Enabled**: {':white_check_mark:' if role_config['enabled'] else ':x:'}\n\
+**Notif Channel**: {role_config['channel_notif']}\n\
+**Cooldown**: {role_config['cooldown']}\n\
+**Emoji**: {role_config['emoji']}\n\
+**Message**: {role_config['message']}"
         
-        await ctx.send(role_list, delete_after=20)
-        log.info("End")
+        return role_info
 
-    @commands.command()
-    @predicate.admin_only()
-    async def enableRole(self, ctx: commands.Context, role: int | discord.Role, value: bool = True):
-        await ctx.message.delete()
+    async def get_channel(self, channel_id: int) -> typing.Optional[discord.TextChannel]:
+        # Try to get the channel from the cache
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                # Fetch the channel from the API if not in cache
+                channel = await self.bot.fetch_channel(channel_id)
+            except discord.NotFound:
+                print(f"Channel with ID {channel_id} not found.")
+            except discord.Forbidden:
+                print(f"Bot does not have permission to access channel with ID {channel_id}.")
+            except Exception as e:
+                print(f"An error occurred while fetching the channel: {e}")
+        return channel
 
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
+    async def get_channel(self, role_id: int) -> typing.Optional[discord.Role]:
+        # Try to get the channel from the cache
+        role_id = self.bot.get_role(role_id)
+        if channel is None:
+            try:
+                # Fetch the channel from the API if not in cache
+                channel = await self.bot.fetch_channel(channel_id)
+            except discord.NotFound:
+                print(f"Channel with ID {channel_id} not found.")
+            except discord.Forbidden:
+                print(f"Bot does not have permission to access channel with ID {channel_id}.")
+            except Exception as e:
+                print(f"An error occurred while fetching the channel: {e}")
+        return channel
 
-        for role in self.roles_detection:
-            if role["id"] == role_id:
-                role["enabled"] = value
-                log.info(f"{'En' if value else 'Dis'}abling role {role_id}")
-                await ctx.send(f"Role {role_id} tracking status: {':white_check_mark:' if value else ':x:'}", delete_after=5)
-                return
-        await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def trackRole(self, ctx: commands.Context, role: int | discord.Role, channel: int | discord.TextChannel, message: str):
-        await ctx.message.delete()
-
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
-            
-        if isinstance(channel, discord.TextChannel):
-            channel_id = channel.id
-        else:
-            channel_id = int(channel)
-
-        log.info(f"Try to track role {role_id}. Notification in channel: {channel_id}. Message: {message}")
-        for role in self.roles_detection:
-            if role["id"] == role_id:
-                await log.failure(f"Role {role_id} is already configured.")
-                return
-        # Add the new role to the list
-        new_role = {
-            "enabled": True,
-            "id": role_id,
-            "channel_notif": channel_id,
-            "emoji": None,
-            "cooldown": 60,
-            "message": message
-        }
-        self.roles_detection.append(new_role)
-        await log.success(ctx, f"Role {role_id} now configured.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def untrackRole(self, ctx: commands.Context, role: int | discord.Role):
-        await ctx.message.delete()
-
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
-
-        log.info(f"Try to untrack role {role_id}.")
-        for i, tracked_role in enumerate(self.roles_detection):
-            if tracked_role["id"] == role_id:
-                del self.roles_detection[i]
-                await log.success(ctx, f"Role {role_id} now untracked.")
-                return
-        await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def setRoleCooldown(self, ctx: commands.Context, role: int | discord.Role, cooldown: int):
-        await ctx.message.delete()
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
-        log.info(f"Try to set cooldown for role {role_id} to {cooldown} minutes.")
-        for tracked_role in self.roles_detection:
-            if tracked_role["id"] == role_id:
-                tracked_role["cooldown"] = cooldown
-                await log.success(ctx, f"Role {role_id} cooldown set to {cooldown} minutes.")
-                return
-        await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def setRoleMessage(self, ctx: commands.Context, role: int | discord.Role, message: str):
-        await ctx.message.delete()
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
-        log.info(f"Try to set message for role {role_id} to '{message}'")
-        for tracked_role in self.roles_detection:
-            if tracked_role["id"] == role_id:
-                tracked_role["message"] = message
-                await log.success(ctx, f"Role {role_id} message successfully set.")
-                return
-        await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def setRoleEmoji(self, ctx: commands.Context, role: int | discord.Role, emoji: str = None):
-        await ctx.message.delete()
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
-        log.info(f"Try to set emoji for role {role_id} to '{emoji}'")
-        for tracked_role in self.roles_detection:
-            if tracked_role["id"] == role_id:
-                tracked_role["emoji"] = emoji
-                await log.success(ctx, f"Role {role_id} emoji successfully set.")
-                return
-        await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def showRoleConfig(self, ctx: commands.Context, role: int | discord.Role):
-        await ctx.message.delete()
-        if isinstance(role, discord.Role):
-            role_id = role.id
-        else:
-            role_id = int(role)
-        for tracked_role in self.roles_detection:
-            if tracked_role["id"] == role_id:
-                await ctx.send(f"**Role**\n\
-**ID**: {role_id}\n\
-**Status**: {':white_check_mark:' if tracked_role['enabled'] else ':x:'}\n\
-**Notif Channel**: {tracked_role['channel_notif']}\n\
-**Cooldown**: {tracked_role['cooldown']}\n\
-**Message**: {tracked_role['message']}", delete_after=20)
-                return
-        await log.failure(ctx, f"Role {role_id} not configured yet.")
-
-    @commands.command()
-    @predicate.admin_only()
-    async def roleInfo(self, ctx: commands.Context, role: int | discord.Role):
-        await ctx.message.delete()
-        if isinstance(role, discord.Role):
-            role_inst = role
-        else:
-            role_inst = ctx.guild.get_role(int(role)) or await ctx.guild.fetch_role(int(role))
+    async def get_role(self, ctx: commands.Context, role_id: int) -> typing.Optional[discord.Role]:
+        # Search through all guilds the bot is in
+        for guild in self.bot.guilds:
+            role = guild.get_role(role_id)
+            if role is not None:
+                return role
         
-        if role_inst is None:
-            await log.failure(f"Role {role} not found.")
+        # Role not found in any guild
+        log.error(f"Role with ID {role_id} not found in any guild.")
+        return None
+
+    async def enable_role(self, ctx: commands.Context, role: discord.Role, enable: bool) -> None:
+        role_config = self.get_role_config(role)
+        if role_config is None:
+            await log.failure(ctx, f"Role `{role.name}` ({role.id}) is not configured yet.")
             return
         
-        log.info(f"Display role informations for {role_inst.name} ({role_inst.id})")
-
-        try:
-            await ctx.send(f"**Role {role_inst.name}**\n\
-**ID**: {role_inst.id}\n\
-**Creation**: {role_inst.created_at.strftime('%a, %d %b %Y %I:%M %p')}\n\
-**Position**: {role_inst.position}\n\
-**Mentionable**: {role_inst.mentionable}", delete_after=20)
-        except Exception as e:
-            errMsg: str = f"Failed to retrieve role information: {e}"
-            log.error(errMsg)
-            await log.failure(ctx, errMsg)
-
-    @commands.command(aliases=["stm"])
-    @predicate.admin_only()
-    async def showTrackedMessages(self, ctx: commands.Context):
-        await ctx.message.delete()
-        log.info("Displaying tracked messages.")
-        msg_list = "Tracked messages:\n"
-        for key, msgData in self.msg_tracked.items():
-            for msgDatum in msgData:
-                try:
-                    guild = self.bot.get_guild(msgDatum["guild"]) or await self.bot.fetch_guild(msgDatum["guild"])
-                    channel = guild.get_channel(msgDatum["channel"]) or await guild.fetch_channel(msgDatum["channel"])
-                    msg = await self.get_message(channel.id, msgDatum["id"])
-                    msg_list += f"- Message `{msg.id}` in channel `{channel.name}` in guild `{guild.name}`\n"
-                except Exception as e:
-                    log.error(f"Failed to retrieve message {key}: {e}")
-                    msg_list += f"- Message `{msgDatum['id']}` in channel `{msgDatum['channel']}` in guild `{msgDatum['guild']}` (deleted)\n"
-        msg_list += f"Total tracked messages: {len(self.msg_tracked)}"
-        
-        await ctx.send(msg_list, delete_after=20)
+        role_config["enabled"] = enable
+        log.info(f"{'En' if enable else 'Dis'}abling role `{role.name}` ({role.id})")
+        await log.client(ctx, f"Role `{role.name}` ({role.id}) tracking status: {':white_check_mark:' if enable else ':x:'}")
 
     @commands.command()
     @predicate.admin_only()
-    async def flush(self, ctx: commands.Context):
+    async def role(self, ctx: commands.Context, role: discord.Role = None, command: str = None, *, args: str = None):
         await ctx.message.delete()
-        log.info("Flush.")
-        try:
-            self.save_tracked_messages()
-            self.config["roles"] = self.roles_detection
-            filehelper.saveConfig(module = "bam", data = self.config)
-        except Exception as e:
-            log.failure(ctx, f"Failed to flush: {e}")
-        await log.success(ctx, "Flushed.")
-    
+
+        if role is None: # List all tracked roles if no role provided
+            log.info("Displaying all tracked roles.")
+            role_list = "Tracked roles:\n"
+            for role_config in self.roles_detection:
+                role = await self.get_role(ctx, role_config['id'])
+                if role is not None:
+                    role_list += f"- Role `{role.name}` ({role.id}) in channel {role_config['channel_notif']} (enabled: {role_config['enabled']})\n"
+            await log.client(ctx, role_list, delete_after=20)
+
+        elif command is None: # Display role informations if no command provided
+            try:
+                await log.client(ctx, self.get_role_info(role), delete_after=20)
+            except Exception as e:
+                await log.failure(ctx, f"Failed to retrieve role information: {e}")
+        
+        elif command.lower() == "enable": # Enable or disable a specific role (assume "enable on" if no argument passed)
+            enable = True
+            if args is not None:
+                try:
+                    enable = await commands.run_converters(ctx, bool, args, {})
+                except Exception as e:
+                    await log.failure(ctx, f"Failed to get boolean argument: {e}")
+                    return
+            await self.enable_role(ctx, role, enable)
+        
+        elif command.lower() == "disable": # Shortcut for "enable off"
+            await self.enable_role(ctx, role, False)
+
+        elif command.lower() == "track": # Track a new role
+            role_config = self.get_role_config(role)
+            if role_config is not None:
+                await log.failure(ctx, f"Role `{role.name}` ({role.id}) is already configured.")
+                return
+            
+            kwargs: dict[str, str] = dict()
+            if args is not None:
+                try:
+                    log.info(f"Args: {args}")
+                    kwargs = kwargparse.parse_kwargs(args)
+                    log.info(f"Result: {kwargs}")
+                except kwargparse.UnexpectedToken as e:
+                    await log.failure(ctx, f"Unexpected token: {e}", delete_after=20)
+                    return
+            
+            log.info(f"Try to configure role `{role.name}` ({role.id}).")
+
+            # Add the new role to the list
+            new_role_config = {
+                "enabled": False,
+                "id": role.id,
+                "channel_notif": kwargs.get("channel") or ctx.channel.id,
+                "emoji": kwargs.get("emoji"),
+                "cooldown": kwargs.get("cooldown") or 60,
+                "message": kwargs.get("message") or "Default message. Use `role @role message <msg>` to change it."
+            }
+            self.roles_detection.append(new_role_config)
+            await log.success(ctx, f"Role `{role.name}` ({role.id}) now configured. Use `role @role enable` to enable it.")
+
+        elif command.lower() == "untrack": # Untrack a role
+            role_config = self.get_role_config(role)
+            if role_config is None:
+                await log.failure(ctx, f"Role is not configured yet.")
+                return
+            
+            log.info(f"Try to untrack role `{role.name}` ({role.id}).")
+            for i, tracked_role in enumerate(self.roles_detection):
+                if tracked_role["id"] == role.id:
+                    del self.roles_detection[i]
+                    await log.success(ctx, f"Role `{role.name}` ({role.id}) now untracked.")
+
+        elif command.lower() == "channel": # Change or display the notification channel
+            role_config = self.get_role_config(role)
+            if role_config is None:
+                await log.failure(ctx, f"Role is not configured yet.")
+                return
+            
+            if args is None: # Display current notif channel if no argument provided
+                channel: discord.TextChannel = await self.get_channel(role_config["channel_notif"])
+                await log.client(ctx, f"Notification channel for `{role.name}` ({role.id}) is set to `{channel.name}` ({channel.id})")
+            else:
+                try:
+                    log.info(f"Try to set channel's role `{role.name}` ({role.id}) to {args}.")
+                    converter = commands.TextChannelConverter()
+                    channel = await converter.convert(ctx, args)
+                    role_config["channel_notif"] = channel.id
+                    await log.success(ctx, f"Notification channel for `{role.name}` ({role.id}) successfully set to: `{channel}`")
+                except Exception as e:
+                    await log.failure(ctx, f"Failed to retrieve channel: {e}")
+
+        elif command.lower() == "emoji": # Change or display the emoji
+            role_config = self.get_role_config(role)
+            if role_config is None:
+                await log.failure(ctx, f"Role is not configured yet.")
+                return
+            
+            if args is None: # Display current notif channel if no argument provided
+                await log.client(ctx, f"Emoji for `{role.name}` ({role.id}) is set to {role_config["emoji"]}")
+            else:
+                log.info(f"Try to set emoji's role `{role.name}` ({role.id}) to {args}.")
+                role_config["emoji"] = args
+                await log.success(ctx, f"Emoji for `{role.name}` ({role.id}) successfully set to: `{role_config["emoji"]}`")
+
+        elif command.lower() == "message": # Change or display the message
+            role_config = self.get_role_config(role)
+            if role_config is None:
+                await log.failure(ctx, f"Role is not configured yet.")
+                return
+            
+            if args is None: # Display current notif channel if no argument provided
+                await log.client(ctx, f"Message for `{role.name}` ({role.id}) is set to {role_config["message"]}")
+            else:
+                log.info(f"Try to set message's role `{role.name}` ({role.id}) to {args}.")
+                role_config["message"] = args
+                await log.success(ctx, f"Message for `{role.name}` ({role.id}) successfully set to: `{role_config["message"]}`")
+        
+        elif command.lower() == "cooldown": # Change or display the cooldown
+            role_config = self.get_role_config(role)
+            if role_config is None:
+                await log.failure(ctx, f"Role is not configured yet.")
+                return
+            
+            if args is None: # Display current notif channel if no argument provided
+                await log.client(ctx, f"Cooldown for `{role.name}` ({role.id}) is set to {role_config["cooldown"]}")
+            else:
+                try:
+                    log.info(f"Try to set cooldown's role `{role.name}` ({role.id}) to {args}.")
+                    value: int = int(args)
+                    role_config["cooldown"] = value
+                    await log.success(ctx, f"Cooldown for `{role.name}` ({role.id}) successfully set to: `{role_config["cooldown"]}`")
+                except Exception as e:
+                    await log.failure(ctx, f"Failed to set cooldown for `{role.name}` ({role.id}): `{e}`")
+
+        else: # Default case when command argument is not listed above
+            await log.failure(ctx, f"Unkown command `{command}`.")
+
     ####                             ####
     #       Periodic Scan Commands      #
     ####                             ####
@@ -503,11 +489,14 @@ class BAM(commands.Cog):
             await self.fetch_roles()
 
         elif command.lower() == "enable":
-            if len(args) > 0:
-                log.warning(f"args `{args[0]}` converted into bool: {args[0] == True}")
-                await self.enable_scan(ctx, args[0] == True)
-            else: # Assume we want to `enable on` if no argument passed
-                await self.enable_scan(ctx, True)
+            enable = True
+            if args is not None:
+                try:
+                    enable = await commands.run_converters(ctx, bool, args[0], {})
+                except Exception as e:
+                    await log.failure(ctx, f"Failed to get boolean argument: {e}")
+                    return
+            await self.enable_scan(ctx, enable)
 
         elif command.lower() == "disable": # Shortcut for `enable off`
                 await self.enable_scan(ctx, False)
@@ -529,3 +518,68 @@ class BAM(commands.Cog):
         else:
             await log.client(ctx, f"Unkown command {command}.\nAvailable commands:\n- `enable [on/off]`\n- `disable` (equivalent to `enable off`)\n- `interval [<value>]`\n- `all`\n- no command (scan current server)", delete_after=20)
 
+    ####                              ####
+    #           Misc Commands            #
+    ####                              ####
+
+    # Test command to see if the BAM module is working
+    @commands.command()
+    async def bam(self, ctx):
+        await ctx.message.delete()
+        await ctx.send("BAM!", delete_after=10)
+
+    # Delete all tracked messages
+    @commands.command(aliases=["ctm"])
+    @predicate.admin_only()
+    async def clearTrackedMessages(self, ctx: commands.Context):
+        await ctx.message.delete()
+
+        count: int = len(self.msg_tracked)
+        log.info(f"Cleaning up {count} tracked messages...")
+
+        for key, msgData in self.msg_tracked.items():
+            log.info(f"Trying to delete message {key}")
+            for msgDatum in msgData:
+                msg = await self.get_message(msgDatum['channel'], msgDatum['id'])
+                if msg is not None:
+                    try:
+                        await msg.delete()
+                    except Exception as e:
+                        log.error(f"Error deleting message {key}: {e}")
+
+        self.msg_tracked.clear()
+        log.info("Cleanup complete.")
+        await log.success(ctx, f"{count} tracked message sucessfully cleared.")
+
+    @commands.command(aliases=["stm"])
+    @predicate.admin_only()
+    async def showTrackedMessages(self, ctx: commands.Context):
+        await ctx.message.delete()
+        log.info("Displaying tracked messages.")
+        msg_list = "Tracked messages:\n"
+        for key, msgData in self.msg_tracked.items():
+            for msgDatum in msgData:
+                try:
+                    guild = self.bot.get_guild(msgDatum["guild"]) or await self.bot.fetch_guild(msgDatum["guild"])
+                    channel = guild.get_channel(msgDatum["channel"]) or await guild.fetch_channel(msgDatum["channel"])
+                    msg = await self.get_message(channel.id, msgDatum["id"])
+                    msg_list += f"- Message `{msg.id}` in channel `{channel.name}` in guild `{guild.name}`\n"
+                except Exception as e:
+                    log.error(f"Failed to retrieve message {key}: {e}")
+                    msg_list += f"- Message `{msgDatum['id']}` in channel `{msgDatum['channel']}` in guild `{msgDatum['guild']}` (deleted)\n"
+        msg_list += f"Total tracked messages: {len(self.msg_tracked)}"
+        
+        await ctx.send(msg_list, delete_after=20)
+
+    @commands.command()
+    @predicate.admin_only()
+    async def flush(self, ctx: commands.Context):
+        await ctx.message.delete()
+        log.info("Flush.")
+        try:
+            self.save_tracked_messages()
+            self.config["roles"] = self.roles_detection
+            filehelper.saveConfig(module = "bam", data = self.config)
+        except Exception as e:
+            log.failure(ctx, f"Failed to flush: {e}")
+        await log.success(ctx, "Flushed.")
